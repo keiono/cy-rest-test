@@ -2,10 +2,9 @@
  * Created by kono on 2014/06/09.
  */
 var frisby = require('frisby');
+var request = require('request');
+
 var util = require('./test_utility');
-// var fs = require('fs');
-// var async = require('async');
-// var request = require('request');
 
 /**
  * Comprehensive test suite for Cytoscape REST API
@@ -36,41 +35,126 @@ describe('Suite 1: Network Model API tests', function() {
     console.log('======== Network API Test =========');
 
 
-    it('Clean-up and load networks.', function() {
-        runs(function() {
-            util.deleteAll(BASE_URL + 'networks');
-        });
-        runs(function() {
-            util.count('0', BASE_URL + 'networks/count');
-        });
-        runs(function() {
-            createEmptyNetwork();
-        });
-        runs(function() {
-            util.count('1', BASE_URL + 'networks/count');
-        });
-        runs(function() {
-            post();
-            post();
-        });
-        runs(function() {
-            util.count('3', BASE_URL + 'networks/count');
-            console.log('almost there...');
-        });
-    });
+    it('Create new network', function() {
 
-    it('Test Tables.', function() {
+        var spy = jasmine.createSpy();
+        var networkSpy = jasmine.createSpy();
+        util.deleteAll(BASE_URL + 'networks', spy);
+
+
+        waitsFor(function() {
+            return spy.callCount > 0;
+        });
 
         runs(function() {
-            getAllNetworks();
-            console.log('Get all tables done');
+            expect(spy.callCount).toBe(1);
+            spy.callCount = 0;
+
+            util.countTest(0, BASE_URL + 'networks/count', spy);
+            waitsFor(function() {
+                return spy.callCount > 0;
+            });
+            runs(function() {
+                spy.callCount = 0;
+
+                // Create networks
+                util.createNetwork(emptyNetwork, spy);
+                util.createNetwork(yeastNetworkJson, networkSpy);
+
+                waitsFor(function() {
+                    return spy.callCount === 1 && networkSpy.callCount === 1;
+                });
+
+                runs(function() {
+                    spy.callCount = 0;
+                    var suid = spy.mostRecentCall.args;
+                    console.log('Adding nodes to: ' + suid);
+                    var nodes = ["a", "b", "c"];
+                    util.addNodes(suid, nodes, spy);
+                    waitsFor(function() {
+                        return spy.callCount > 0;
+                    });
+
+                    runs(function() {
+                        spy.callCount = 0;
+                        var args = spy.mostRecentCall.args;
+                        var edges = createEdges(args[0]);
+                        console.log('Adding edges to: ' + suid);
+                        util.addEdges(suid, edges, spy);
+                        waitsFor(function() {
+                            return spy.callCount > 0;
+                        });
+
+                    runs(function() {
+                        spy.callCount = 0;
+                        // Now perform tests on these networks.
+                        startNetworkTests(2, 'yeast network2', 'empty network');
+                        console.log('END: ================================================');
+                    });                        
+
+
+                    });
+                });
+            });
         });
-        runs(function() {
-            console.log('Table test start.');
-        });
+
+
     });
+
+
+    // it('Test Tables.', function() {
+    //     console.log(' - Table tests');
+
+    //     runs(function() {
+    //         getAllNetworks();
+    //         console.log('Get all tables done');
+    //     });
+    //     runs(function() {
+    //         console.log('Table test start.');
+    //     });
+    // });
 
 });
+
+
+function createEdges(nodes) {
+    console.log('nodes>');
+    console.log(nodes);
+
+    var edges = [];
+    var node1 = nodes[0];
+    var node2 = nodes[1];
+    var node3 = nodes[2];
+    var edge1 = {
+        source: node1.SUID,
+        target: node2.SUID,
+        interaction: 'pp'
+    };
+
+    var edge2 = {
+        source: node1.SUID,
+        target: node2.SUID,
+        interaction: 'pd'
+    };
+
+    var edge3 = {
+        source: node1.SUID,
+        target: node3.SUID,
+        interaction: 'pd'
+    };
+
+    var edge4 = {
+        source: node2.SUID,
+        target: node3.SUID,
+        interaction: 'pd'
+    }
+    edges.push(edge1);
+    edges.push(edge2);
+    edges.push(edge3);
+    edges.push(edge4);
+
+    return edges;
+}
 
 
 function getNetwork(column, query) {
@@ -129,7 +213,7 @@ function getTable(networkId, tableType) {
 }
 
 function getColumns(networkId, tableType, expectedColCount) {
-    frisby.create('Get all edges for network with SUID: ' + networkId)
+    frisby.create('Get all columns for : ' + tableType)
         .get(BASE_URL + 'networks/' + networkId + '/tables/' + tableType + '/columns')
         .expectStatus(200)
         .expectHeaderContains('Content-Type', 'application/json')
@@ -137,7 +221,39 @@ function getColumns(networkId, tableType, expectedColCount) {
             expect(json).toBeDefined();
             expect(json.length).toBe(expectedColCount);
         })
-        .inspectJSON()
+        .toss();
+}
+
+function createColumn(networkId, tableType, columnName) {
+    var newColumn = {
+        name: columnName,
+        type: 'Double'
+    };
+
+    frisby.create('POST new column.')
+        .post(BASE_URL + 'networks/' + networkId + '/tables/' + tableType + '/columns',
+            newColumn, {
+                'json': true,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'user-agent': 'frisby.js testing framework'
+                }
+            })
+        .expectStatus(204)
+        .after(function(err, res, body) {
+            getColumns(networkId, 'defaultnode', 7);
+            deleteColumn(networkId, 'defaultnode', columnName);
+        })
+        .toss();
+}
+
+function deleteColumn(networkId, tableType, columnName) {
+    frisby.create('DELETE a column.')
+        .delete(BASE_URL + 'networks/' + networkId + '/tables/' + tableType + '/columns/' + columnName)
+        .expectStatus(204)
+        .after(function(err, res, body) {
+            getColumns(networkId, 'defaultnode', 6);
+        })
         .toss();
 }
 
@@ -154,184 +270,75 @@ function getNetworkById(suid) {
         .toss();
 }
 
-function getAllNetworks() {
-    frisby.create('Get number of networks in current session. (Assume this is a new session)')
+function startNetworkTests(expectedNumberOfNetworks, networkName1, networkName2) {
+    frisby.create('Get all networks in current session and start other tests.')
         .get(BASE_URL + 'networks')
         .expectStatus(200)
         .expectHeaderContains('Content-Type', 'application/json')
+        // .inspectJSON()
         .afterJSON(function(json) {
-            expect(json.length).toBe(3);
-            testTable(json);
+            expect(json.length).toBe(expectedNumberOfNetworks);
+            
+            var network1 = null;
+            var network2 = null;
+            for (var i = 0; i < json.length; i++) {
+                console.log('IDX = ' + i);
+                if (json[i].data.name === networkName1) {
+                    network1 = json[i];
+                } else if (json[i].data.name === networkName2) {
+                    network2 = json[i];
+                }
+            }
+            expect(network1).toBeDefined();
+            expect(network2).toBeDefined();
+
+            testTable(network1);
+            testNetwork(network2);
         })
         .toss();
 }
 
-function testTable(json) {
-    describe("Included matchers:", function() {
-        it("Check Table API", function() {
-            for (var i = 0; i <= json.length; i++) {
-                var network1 = null;
-                if (json[i].data.name === 'yeast network2') {
-                    network1 = json[i];
-                    break;
-                }
-            }
-            expect(network1 !== null).toBe(true);
-            var nodeCount = network1.elements.nodes.length;
-            var edgeCount = network1.elements.edges.length;
-            expect(nodeCount).toBe(331);
-            expect(edgeCount).toBe(362);
+function testNetwork(network) {
+    describe("Perform tests on network API.", function() {
+        it("Check network API", function() {
+            var nodeCount = network.elements.nodes.length;
+            var edgeCount = network.elements.edges.length;
+            expect(nodeCount).toBe(3);
+            expect(edgeCount).toBe(4);
 
-            getNodes(network1.data.SUID, 331);
-            getEdges(network1.data.SUID, 362);
-            getTable(network1.data.SUID, 'defaultnode');
-            getTable(network1.data.SUID, 'defaultedge');
-            getTable(network1.data.SUID, 'defaultnetwork');
-            getColumns(network1.data.SUID, 'defaultnode', 6);
-            getColumns(network1.data.SUID, 'defaultedge', 11);
-            getColumns(network1.data.SUID, 'defaultnetwork', 6);
-
+            getNodes(network.data.SUID, 3);
+            getEdges(network.data.SUID, 4);
 
         });
     });
 }
 
 
-function createEmptyNetwork() {
-    frisby.create('POST an empty network.')
-        .post(BASE_URL + 'networks', emptyNetwork, {
-            'json': true,
-            'headers': {
-                'Content-Type': 'application/json',
-                'user-agent': 'frisby.js testing framework'
-            }
-        })
-        .expectStatus(200)
-        .expectJSONTypes({
-            networkSUID: Number
-        })
-        .afterJSON(function(json) {
-            var suid = json.networkSUID;
-            var nodes = [
-                "node1", "node2", "node3"
-            ];
-            console.log(nodes);
-            addNodes(suid, nodes);
-        })
-        .toss();
+function testTable(network) {
+    describe("Included matchers:", function() {
+        it("Check Table API", function() {
+            expect(network !== null).toBe(true);
+            var nodeCount = network.elements.nodes.length;
+            var edgeCount = network.elements.edges.length;
+            expect(nodeCount).toBe(331);
+            expect(edgeCount).toBe(362);
+
+            getNodes(network.data.SUID, 331);
+            getEdges(network.data.SUID, 362);
+            getTable(network.data.SUID, 'defaultnode');
+            getTable(network.data.SUID, 'defaultedge');
+            getTable(network.data.SUID, 'defaultnetwork');
+            getColumns(network.data.SUID, 'defaultnode', 6);
+            getColumns(network.data.SUID, 'defaultedge', 11);
+            getColumns(network.data.SUID, 'defaultnetwork', 6);
+
+            runs(function() {
+                createColumn(network.data.SUID, 'defaultnode', 'testColumn');
+            });
+        });
+    });
 }
 
-function addNodes(networkid, nodes) {
-    console.log('Adding new nodes test...');
-
-    frisby.create('Add new nodes to existing network.')
-        .post(BASE_URL + 'networks/' + networkid + '/nodes', nodes, {
-            'json': true,
-            'headers': {
-                'Content-Type': 'application/json',
-                'user-agent': 'frisby.js testing framework'
-            }
-        })
-        .expectStatus(200)
-        .expectHeaderContains('Content-Type', 'application/json')
-        .afterJSON(function(json) {
-            expect(json.length).toBe(3);
-
-            var edges = [];
-            var node1 = json[0];
-            var node2 = json[1];
-            var node3 = json[2];
-            var edge1 = {
-                source: node1.SUID,
-                target: node2.SUID,
-                interaction: 'pp'
-            };
-
-            var edge2 = {
-                source: node1.SUID,
-                target: node2.SUID,
-                interaction: 'pd'
-            };
-
-            var edge3 = {
-                source: node1.SUID,
-                target: node3.SUID,
-                interaction: 'pd'
-            };
-
-            var edge4 = {
-                source: node2.SUID,
-                target: node3.SUID,
-                interaction: 'pd'
-            }
-            edges.push(edge1);
-            edges.push(edge2);
-            edges.push(edge3);
-            edges.push(edge4);
-            addEdges(networkid, edges);
-        })
-        .toss();
-}
-
-function addEdges(networkid, edges) {
-    frisby.create('Add edges to existing network.')
-        .post(BASE_URL + 'networks/' + networkid + '/edges', edges, {
-            'json': true,
-            'headers': {
-                'Content-Type': 'application/json',
-                'user-agent': 'frisby.js testing framework'
-            }
-        })
-        .expectStatus(200)
-        .expectHeaderContains('Content-Type', 'application/json')
-        .afterJSON(function(json) {
-            var edges = json;
-            expect(edges.length).toBe(4);
-            getNetworkById(networkid);
-        })
-        .toss();
-}
-
-function getCount() {
-    frisby.create('Add nodes to existing network.')
-        .post(BASE_URL + 'networks/' + networkid + '/nodes', nodes, {
-            'json': true,
-            'headers': {
-                'Content-Type': 'application/json',
-                'user-agent': 'frisby.js testing framework'
-            }
-        })
-        .expectStatus(200)
-        .expectHeaderContains('Content-Type', 'application/json')
-        .afterJSON(function(json) {
-            getNetwork();
-        })
-        .inspectJSON()
-        .toss();
-}
-
-function post() {
-
-    console.log('POSTing');
-    frisby.create('POST a new network.')
-        .post(BASE_URL + 'networks', yeastNetworkJson, {
-            'json': true,
-            'headers': {
-                'Content-Type': 'application/json',
-                'user-agent': 'frisby.js testing framework'
-            }
-        })
-        .expectStatus(200)
-        .expectJSONTypes({
-            networkSUID: Number
-        })
-        .afterJSON(function(json) {
-            var suid = json.networkSUID;
-            expect(suid).toBeDefined();
-            console.log('SUID: ' + suid);
-        })
-        .toss();
-}
 
 function post2() {
     console.log('Posting new network 2');
