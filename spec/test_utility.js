@@ -58,15 +58,15 @@ this.createNetwork = function(networkObject, spy) {
 }
 
 this.getNetwork = function(networkId, spy) {
-    frisby.create('Get a network by SUID: ' + networkId)
-        .get(BASE_URL + 'networks/' + networkId)
-        .expectStatus(200)
-        .expectHeaderContains('Content-Type', 'application/json')
-        .afterJSON(function(json) {
-            expect(json).toBeDefined();
-            spy(json);
-        })
-        .toss();
+	frisby.create('Get a network by SUID: ' + networkId)
+		.get(BASE_URL + 'networks/' + networkId)
+		.expectStatus(200)
+		.expectHeaderContains('Content-Type', 'application/json')
+		.afterJSON(function(json) {
+			expect(json).toBeDefined();
+			spy(json);
+		})
+		.toss();
 }
 
 
@@ -92,21 +92,105 @@ this.addNodes = function(networkid, nodes, spy) {
 }
 
 this.addEdges = function(networkid, edges, spy) {
-    frisby.create('Add edges to existing network.')
-        .post(BASE_URL + 'networks/' + networkid + '/edges', edges, {
-            'json': true,
-            'headers': {
-                'Content-Type': 'application/json',
-                'user-agent': 'frisby.js testing framework'
-            }
-        })
+	frisby.create('Add edges to existing network.')
+		.post(BASE_URL + 'networks/' + networkid + '/edges', edges, {
+			'json': true,
+			'headers': {
+				'Content-Type': 'application/json',
+				'user-agent': 'frisby.js testing framework'
+			}
+		})
+		.expectStatus(200)
+		.expectHeaderContains('Content-Type', 'application/json')
+		.afterJSON(function(json) {
+			var edges = json;
+			expect(edges.length).toBe(edges.length);
+			spy(json);
+		})
+		.inspectJSON()
+		.toss();
+}
+
+this.getNodes = function(networkId, expectedSize, spy) {
+	frisby.create('Get all nodes for network with SUID: ' + networkId)
+		.get(BASE_URL + 'networks/' + networkId + '/nodes')
+		.expectStatus(200)
+		.expectHeaderContains('Content-Type', 'application/json')
+		.afterJSON(function(json) {
+			expect(json).toBeDefined();
+			var len = json.length;
+			expect(len).toBe(expectedSize);
+			spy(json);
+		})
+		.toss();
+}
+
+this.getNode = function(networkId, nodeId, spy) {
+	frisby.create('Get all nodes for network with SUID: ' + networkId)
+		.get(BASE_URL + 'networks/' + networkId + '/nodes/' + nodeId)
+		.expectStatus(200)
+		.expectHeaderContains('Content-Type', 'application/json')
+		.afterJSON(function(json) {
+			expect(json).toBeDefined();
+			expect(json.data.SUID).toBe(nodeId);
+			spy(json);
+		})
+		.inspectJSON()
+		.toss();
+}
+
+this.testNodeApi = function(networkId, nodeId, spy) {
+	frisby.create('Get first neighbours: ' + nodeId)
+		.get(BASE_URL + 'networks/' + networkId + '/nodes/' + nodeId + '/neighbors')
+		.expectStatus(200)
+		.expectHeaderContains('Content-Type', 'application/json')
+		.afterJSON(function(json) {
+			expect(json).toBeDefined();
+			spy(json);
+		})
+		.inspectJSON()
+		.toss();
+
+	frisby.create('Get connecting edges: ' + nodeId)
+		.get(BASE_URL + 'networks/' + networkId + '/nodes/' + nodeId + '/adjEdges')
+		.expectStatus(200)
+		.expectHeaderContains('Content-Type', 'application/json')
+		.afterJSON(function(json) {
+			expect(json).toBeDefined();
+			spy(json);
+		})
+		.inspectJSON()
+		.toss();
+}
+
+this.getEdge = function(networkId, edgeId, spy) {
+	frisby.create('Get all nodes for network with SUID: ' + networkId)
+		.get(BASE_URL + 'networks/' + networkId + '/edges/' + edgeId)
+		.expectStatus(200)
+		.expectHeaderContains('Content-Type', 'application/json')
+		.afterJSON(function(json) {
+			expect(json).toBeDefined();
+			expect(json.data.SUID).toBe(edgeId);
+			expect(json.data.source).toBeDefined();
+			expect(json.data.target).toBeDefined();
+			expect(json.data.interaction).toBeDefined();
+			spy(json);
+		})
+		.inspectJSON()
+		.toss();
+}
+
+
+this.getEdges = function(networkId, expectedSize, spy) {
+    frisby.create('Get all edges for network with SUID: ' + networkId)
+        .get(BASE_URL + 'networks/' + networkId + '/edges')
         .expectStatus(200)
         .expectHeaderContains('Content-Type', 'application/json')
         .afterJSON(function(json) {
-            var edges = json;
-            expect(edges.length).toBe(edges.length);
+            expect(json).toBeDefined();
+            var len = json.length;
+            expect(len).toBe(expectedSize);
             spy(json);
         })
-        .inspectJSON()
         .toss();
 }
